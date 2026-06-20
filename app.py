@@ -8,7 +8,6 @@ from alpaca_response import (
     alpaca_ok,
     not_connected,
     parse_bool_param,
-    property_not_implemented,
     read_only_error,
 )
 from device_state import DeviceState
@@ -154,7 +153,7 @@ def _common_get(
 _dome_common = _common_get(
     "Ouka Dome",
     "Toit coulissant Ouka (statut Jeedom, lecture seule)",
-    interface_version=2,
+    interface_version=3,
     state=dome_state,
 )
 _safety_common = _common_get(
@@ -277,10 +276,29 @@ async def dome_can_false(request: Request):
     return alpaca_ok(request, False)
 
 
-async def dome_property_not_implemented(request: Request):
+async def dome_can_setshutter(request: Request):
+    """True pour que NINA affiche l'état du toit (commandes PUT toujours refusées)."""
     if err := await _require_dome_connected(request):
         return err
-    return property_not_implemented(request)
+    return alpaca_ok(request, True)
+
+
+async def dome_bool_false(request: Request):
+    if err := await _require_dome_connected(request):
+        return err
+    return alpaca_ok(request, False)
+
+
+async def dome_azimuth(request: Request):
+    if err := await _require_dome_connected(request):
+        return err
+    return alpaca_ok(request, 0.0)
+
+
+async def dome_altitude(request: Request):
+    if err := await _require_dome_connected(request):
+        return err
+    return alpaca_ok(request, 90.0)
 
 
 async def dome_devicestate(request: Request):
@@ -290,7 +308,13 @@ async def dome_devicestate(request: Request):
         request,
         [
             {"Name": "Connected", "Value": True},
+            {"Name": "CanSetShutter", "Value": True},
             {"Name": "ShutterStatus", "Value": roof.shutter_state()},
+            {"Name": "Azimuth", "Value": 0.0},
+            {"Name": "Altitude", "Value": 90.0},
+            {"Name": "AtHome", "Value": False},
+            {"Name": "AtPark", "Value": False},
+            {"Name": "Slaved", "Value": False},
             {"Name": "Slewing", "Value": False},
             {"Name": "TimeStamp", "Value": datetime.now(timezone.utc).isoformat()},
         ],
@@ -309,15 +333,18 @@ for cap in (
     "cansetaltitude",
     "cansetazimuth",
     "cansetpark",
-    "cansetshutter",
     "canslave",
     "cansyncazimuth",
 ):
     app.add_api_route(f"{DOME_PREFIX}/{cap}", dome_can_false, methods=["GET"])
 
-# GET propriétés non applicables au toit coulissant
-for prop in ("altitude", "azimuth", "athome", "atpark", "slaved"):
-    app.add_api_route(f"{DOME_PREFIX}/{prop}", dome_property_not_implemented, methods=["GET"])
+app.add_api_route(f"{DOME_PREFIX}/cansetshutter", dome_can_setshutter, methods=["GET"])
+
+app.add_api_route(f"{DOME_PREFIX}/azimuth", dome_azimuth, methods=["GET"])
+app.add_api_route(f"{DOME_PREFIX}/altitude", dome_altitude, methods=["GET"])
+
+for prop in ("athome", "atpark", "slaved"):
+    app.add_api_route(f"{DOME_PREFIX}/{prop}", dome_bool_false, methods=["GET"])
 
 # PUT modifications interdites
 for action in (
