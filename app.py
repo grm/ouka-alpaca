@@ -92,7 +92,7 @@ def _common_get(
     async def driverinfo(request: Request):
         return alpaca_ok(
             request,
-            f"{description}\nStatut lu depuis Jeedom (lecture seule, cache 30s).",
+            f"{description}\nStatut Jeedom (cache 30s). Ouverture via API key Jeedom, pas de fermeture.",
         )
 
     async def driverversion(request: Request):
@@ -277,10 +277,28 @@ async def dome_can_false(request: Request):
 
 
 async def dome_can_setshutter(request: Request):
-    """True pour que NINA affiche l'état du toit (commandes PUT toujours refusées)."""
     if err := await _require_dome_connected(request):
         return err
     return alpaca_ok(request, True)
+
+
+async def dome_close_not_supported(request: Request):
+    if err := await _require_dome_connected(request):
+        return err
+    return alpaca_error(
+        request,
+        0x40B,
+        "Fermeture non gérée : le toit se ferme manuellement via Jeedom",
+    )
+
+
+async def dome_openshutter(request: Request):
+    if err := await _require_dome_connected(request):
+        return err
+    ok, detail = roof.request_open()
+    if not ok:
+        return alpaca_error(request, 0x500, f"Échec demande ouverture Jeedom : {detail}")
+    return alpaca_ok(request, None)
 
 
 async def dome_bool_false(request: Request):
@@ -346,12 +364,12 @@ app.add_api_route(f"{DOME_PREFIX}/altitude", dome_altitude, methods=["GET"])
 for prop in ("athome", "atpark", "slaved"):
     app.add_api_route(f"{DOME_PREFIX}/{prop}", dome_bool_false, methods=["GET"])
 
-# PUT modifications interdites
+app.add_api_route(f"{DOME_PREFIX}/openshutter", dome_openshutter, methods=["PUT"])
+app.add_api_route(f"{DOME_PREFIX}/closeshutter", dome_close_not_supported, methods=["PUT"])
+
 for action in (
     "abortslew",
-    "closeshutter",
     "findhome",
-    "openshutter",
     "park",
     "setpark",
     "slewtoaltitude",

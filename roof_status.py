@@ -6,7 +6,7 @@ from enum import IntEnum
 
 import httpx
 
-from config import CACHE_TTL_SECONDS, JEEDOM_STATUS_URL
+from config import CACHE_TTL_SECONDS, JEEDOM_OPEN_URL, JEEDOM_STATUS_URL
 
 logger = logging.getLogger(__name__)
 
@@ -71,3 +71,21 @@ class RoofStatusClient:
         if status.state is None:
             return 4
         return int(status.state)
+
+    def invalidate_cache(self) -> None:
+        with self._lock:
+            self._cache = None
+
+    def request_open(self) -> tuple[bool, str]:
+        """Envoie la demande d'ouverture du toit via l'API Jeedom (cmd action)."""
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                response = client.get(JEEDOM_OPEN_URL)
+                response.raise_for_status()
+                body = response.text.strip()
+            logger.info("Demande ouverture toit Jeedom : HTTP %s, réponse=%r", response.status_code, body)
+            self.invalidate_cache()
+            return True, body
+        except httpx.HTTPError as exc:
+            logger.warning("Échec demande ouverture toit : %s", exc)
+            return False, str(exc)
